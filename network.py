@@ -3,6 +3,10 @@ import asyncio
 
 class RaftServerProtocol(asyncio.Protocol):
 
+    def __init__(self, timeout):
+        loop = asyncio.get_running_loop()
+        loop.create_task(self.send_heartbeat())
+
     def connection_made(self, transport):
         peername = transport.get_extra_info('peername')
         print('Connection from {}'.format(peername))
@@ -18,13 +22,21 @@ class RaftServerProtocol(asyncio.Protocol):
         print('Close the client socket')
         self.transport.close()
 
+    async def send_heartbeat(self):
+        while True:
+            # TODO send heartbeat
+            asyncio.sleep(self.timeout)
 
-async def run_server(addr=('127.0.0.1', 20000)):
+
+async def run_server(addr=('127.0.0.1', 20000), timeout):
     # Get a reference to the event loop as we plan to use
     # low-level APIs.
     loop = asyncio.get_running_loop()
 
-    server = await loop.create_server(lambda: RaftServerProtocol(), *addr)
+    server = await loop.create_server(
+        lambda: RaftServerProtocol(timeout),
+        *addr
+    )
 
     async with server:
         await server.serve_forever()

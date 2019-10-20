@@ -9,10 +9,11 @@ class State(enum.IntEnum):
 
 class RaftMachine:
 
-    def __init__(self):
+    def __init__(self, net):
         self._state = FOLLOWER  # starting state is always FOLLOWER
         self._term = 0
         self._log = []
+        sel._net = net
 
     @property
     def state(self):
