@@ -78,7 +78,7 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
                     self.machine.append_entries(msg.command)
             elif isinstance(msg, message.AppendEntriesResponse):
                 # TODO
-                pass
+                self.machine.commit()
             elif isinstance(msg, message.RequestVote):
                 if not self.machine.state == State.LEADER:
                     self.machine.term += 1

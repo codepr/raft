@@ -1,4 +1,5 @@
 import enum
+import queue
 
 
 @enum.unique
@@ -15,6 +16,7 @@ class RaftMachine:
         self._term = 0
         self._log = []
         self._vote = None
+        self._pending_entries = queue.Queue()
 
     @property
     def state(self):
@@ -47,4 +49,7 @@ class RaftMachine:
 
     def append_entries(self, entries):
         # TODO
-        self.log.append(entries)
+        self._pending_entries.put(entries)
+
+    def commit(self):
+        self.log.append(self._pending_entries.get_nowait())
