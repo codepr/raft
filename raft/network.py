@@ -48,18 +48,18 @@ class RaftServerProtocol(asyncio.DatagramProtocol):
 
     def connection_made(self, transport):
         peername = transport.get_extra_info('peername')
-        log.info('Connection from {}'.format(peername))
+        log.info('Connection from %s', peername)
         self.transport = transport
         self.loop.call_later(self.election_timeout, self.init_state)
 
     def datagram_received(self, data, addr):
         message = data.decode()
-        log.info('Data received from {}: {!r}'.format(addr, message))
+        log.info('Data received from %s: %s', addr, message)
         if message == 'VOTE REQUEST':
             self.transport.sendto(b'OK', addr)
 
     def error_received(self, exc):
-        log.info('Received an error', exc)
+        log.info('Received an error %s', exc)
 
     def connection_lost(self, exc):
         log.info('Connection closed')
@@ -124,10 +124,10 @@ class RaftClientProtocol(asyncio.DatagramProtocol):
         log.info('Connection made')
 
     def datagram_received(self, data, addr):
-        log.info('Data received from {}: {!r}'.format(addr, data.decode()))
+        log.info('Data received from %s: %s', addr, data.decode())
 
     def error_received(self, exc):
-        log.info('Received an error', exc)
+        log.info('Received an error %s', exc)
 
 
 async def get_client(addr=('127.0.0.1', 20001)):
