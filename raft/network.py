@@ -7,6 +7,7 @@ import dataclasses
 from typing import Tuple
 import raft.machine as machine
 import raft.message as message
+from raft.message import MessageType
 from . import LoggerMixin
 from .machine import State
 
@@ -34,9 +35,10 @@ class Node:
 
 
 deser = {
-    message.MessageType.REQUEST_VOTE: message.RequestVote.from_dict,
-    message.MessageType.RESPONSE_VOTE: message.ResponseVote.from_dict,
-    message.MessageType.APPEND_ENTRIES: message.AppendEntries.from_dict
+    MessageType.REQUEST_VOTE: message.RequestVote.from_dict,
+    MessageType.REQUEST_VOTE_RESPONSE: message.ResponseVote.from_dict,
+    MessageType.APPEND_ENTRIES: message.AppendEntries.from_dict,
+    MessageType.APPEND_ENTRIES_RESPONSE: message.AppendEntries.from_dict
 }
 
 
@@ -72,6 +74,11 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
             self.log.info('Data received from %s: %s', addr, msg)
             if isinstance(msg, message.AppendEntries):
                 self.last_heartbeat = self.loop.time()
+                if msg.command:
+                    self.machine.append_entries(msg.command)
+            elif isinstance(msg, message.AppendEntriesResponse):
+                # TODO
+                pass
             elif isinstance(msg, message.RequestVote):
                 if not self.machine.state == State.LEADER:
                     self.machine.term += 1

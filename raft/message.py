@@ -7,7 +7,8 @@ import dataclasses
 class MessageType(enum.IntEnum):
     REQUEST_VOTE = 0
     APPEND_ENTRIES = 1
-    RESPONSE_VOTE = 3
+    REQUEST_VOTE_RESPONSE = 3
+    APPEND_ENTRIES_RESPONSE = 4
 
 
 @dataclasses.dataclass
@@ -37,7 +38,7 @@ class ResponseVote(Message):
 
     def to_json(self):
         return json.dumps({
-            'type': MessageType.RESPONSE_VOTE,
+            'type': MessageType.REQUEST_VOTE_RESPONSE,
             'payload': {}
         })
 
@@ -57,4 +58,14 @@ class AppendEntries(Message):
                 'index': self.index,
                 'command': self.command
             }
+        })
+
+
+@dataclasses.dataclass
+class AppendEntriesResponse(Message):
+
+    def to_json(self):
+        return json.dumps({
+            'type': MessageType.APPEND_ENTRIES_RESPONSE,
+            'payload': {}
         })
