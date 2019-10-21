@@ -24,6 +24,10 @@ class RaftMachine:
     def term(self):
         return self._term
 
+    @term.setter
+    def term(self, term):
+        self._term = term
+
     @property
     def vote(self):
         return self._vote
@@ -43,4 +47,4 @@ class RaftMachine:
 
     def append_entries(self, entries):
         # TODO
-        pass
+        self.log.append(entries)

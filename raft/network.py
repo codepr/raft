@@ -1,3 +1,4 @@
+import json
 import enum
 import random
 import asyncio
@@ -5,6 +6,7 @@ import logging
 import dataclasses
 from typing import Tuple
 import raft.machine as machine
+import raft.message as message
 from . import LoggerMixin
 from .machine import State
 
@@ -31,6 +33,13 @@ class Node:
         return f'{host}:{port}'
 
 
+deser = {
+    message.MessageType.REQUEST_VOTE: message.RequestVote.from_dict,
+    message.MessageType.RESPONSE_VOTE: message.ResponseVote.from_dict,
+    message.MessageType.APPEND_ENTRIES: message.AppendEntries.from_dict
+}
+
+
 class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
 
     def __init__(self, node_id, timeout, election_timeout, on_con_lost, nodes=()):
@@ -44,6 +53,7 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
         self.last_heartbeat = 0
         super().__init__(level=logging.DEBUG)
         self.set_formatter(f'[{self.node_id}] %(message)s')
+        self.votes = set()
 
     def connection_made(self, transport):
         peername = transport.get_extra_info('peername')
@@ -52,18 +62,30 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
         self.loop.call_later(self.election_timeout, self.init_state)
 
     def datagram_received(self, data, addr):
-        message = data.decode()
-        self.log.info('Data received from %s: %s', addr, message)
-        if message == 'BEAT':
-            self.last_heartbeat = self.loop.time()
-        elif message == 'VOTE REQUEST':
-            self.transport.sendto(b'OK', addr)
-            self.log.info("Becoming follower")
-            self.machine.become_follower()
-        elif message == 'OK':
-            self.log.info("Becoming leader")
-            self.machine.become_leader()
-            self.send_heartbeat()
+        raw_message = data.decode()
+        msg_dict = json.loads(raw_message)
+        try:
+            msg = deser[msg_dict['type']](msg_dict['payload'])
+        except KeyError:
+            self.log.error("Unknown message type")
+        else:
+            self.log.info('Data received from %s: %s', addr, msg)
+            if isinstance(msg, message.AppendEntries):
+                self.last_heartbeat = self.loop.time()
+            elif isinstance(msg, message.RequestVote):
+                if not self.machine.state == State.LEADER:
+                    self.machine.term += 1
+                    self.machine.vote = f'{addr[0]}:{addr[1]}'
+                    msg = message.ResponseVote()
+                    self.transport.sendto(msg.to_json().encode(), addr)
+                    self.log.info("Becoming follower")
+                    self.machine.become_follower()
+            elif isinstance(msg, message.ResponseVote):
+                self.votes.add(addr)
+                if len(self.votes) > len(self.nodes) // 2:
+                    self.log.info("Becoming leader")
+                    self.machine.become_leader()
+                    self.send_heartbeat()
 
     def error_received(self, exc):
         self.log.info('Server received an error %s', exc)
@@ -78,17 +100,22 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
             self.machine.become_candidate()
             self.machine.vote = self.node_id
             self.send_vote_request()
+        else:
+            self.loop.call_later(self.election_timeout, self.init_state)
+        self.machine.term += 1
 
     def send_vote_request(self):
         self.log.debug("Sending vote request")
+        msg = message.RequestVote()
         for node_addr in self.nodes:
-            self.transport.sendto(b'VOTE REQUEST', node_addr)
+            self.transport.sendto(msg.to_json().encode(), node_addr)
 
     def send_heartbeat(self):
         if self.machine.state != State.LEADER:
             return
+        msg = message.AppendEntries(self.machine.term, 0, None)
         for node_addr in self.nodes:
-            self.transport.sendto(b"BEAT", node_addr)
+            self.transport.sendto(msg.to_json().encode(), node_addr)
         self.loop.call_later(self.timeout, self.send_heartbeat)
 
 
@@ -116,34 +143,3 @@ async def run_server(addr=('127.0.0.1', 20000), nodes_addrs=(), timeout=.1):
         await on_con_lost
     finally:
         transport.close()
-
-
-# class RaftClientProtocol(asyncio.DatagramProtocol):
-#
-#     def connection_made(self, transport):
-#         self.transport = transport
-#         log.info('Connection made')
-#
-#     def datagram_received(self, data, addr):
-#         log.info('Data received from %s: %s', addr, data.decode())
-#
-#     def error_received(self, exc):
-#         log.info('Client received an error %s', exc)
-#
-#
-# async def get_client(addr=('127.0.0.1', 20001)):
-#     node = Node(addr)
-#     loop = asyncio.get_running_loop()
-#     while True:
-#         try:
-#             transport, _ = await loop.create_datagram_endpoint(
-#                 lambda: RaftClientProtocol(),
-#                 remote_addr=addr
-#             )
-#         except OSError:
-#             log.info("Unable to connect")
-#             await asyncio.sleep(1)
-#         else:
-#             node.status = NodeStatus.ALIVE
-#             break
-#     return node, transport
