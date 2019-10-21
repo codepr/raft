@@ -1,11 +1,12 @@
 import asyncio
 
 
-class RaftServerProtocol(asyncio.Protocol):
+class RaftServerProtocol(asyncio.DatagramProtocol):
 
-    def __init__(self, timeout, nodes=()):
+    def __init__(self, timeout, on_con_lost, nodes=()):
         self.timeout = timeout
         self.nodes = nodes
+        self.on_con_lost = on_con_lost
         self.loop = asyncio.get_running_loop()
         self.nodes = nodes
 
@@ -18,6 +19,13 @@ class RaftServerProtocol(asyncio.Protocol):
     def datagram_received(self, data, addr):
         message = data.decode()
         print('Data received from {}: {!r}'.format(addr, message))
+
+    def error_received(self, exc):
+        print('Received an error', exc)
+
+    def connection_lost(self, exc):
+        print('Connection closed')
+        self.on_con_lost.set_result(True)
 
     def send_heartbeat(self):
         # TODO send heartbeat
@@ -36,16 +44,19 @@ async def run_server(addr=('127.0.0.1', 20000), nodes_addrs=(), timeout=5):
         loop=loop
     )
 
-    transport, protocol = await loop.create_datagram_endpoint(
-        lambda: RaftServerProtocol(timeout, nodes),
-        local_addr=addr,
-        reuse_address=True
+    on_con_lost = loop.create_future()
+    transport, _ = await loop.create_datagram_endpoint(
+        lambda: RaftServerProtocol(timeout, on_con_lost, nodes),
+        local_addr=addr
     )
 
-    await asyncio.sleep(60)
+    try:
+        await on_con_lost
+    finally:
+        transport.close()
 
 
-class RaftClientProtocol(asyncio.Protocol):
+class RaftClientProtocol(asyncio.DatagramProtocol):
 
     def connection_made(self, transport):
         self.transport = transport
@@ -55,14 +66,13 @@ class RaftClientProtocol(asyncio.Protocol):
         print('Data received from {}: {!r}'.format(addr, data.decode()))
 
     def error_received(self, exc):
-        print('Received an error')
+        print('Received an error', exc)
 
 
-async def get_client(self, addr=('127.0.0.1', 20001)):
+async def get_client(addr=('127.0.0.1', 20001)):
     loop = asyncio.get_running_loop()
     transport, _ = await loop.create_datagram_endpoint(
         lambda: RaftClientProtocol(),
-        remote_addr=addr,
-        reuse_address=True
+        remote_addr=addr
     )
     return transport
