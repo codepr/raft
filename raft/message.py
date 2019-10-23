@@ -3,6 +3,10 @@ import json
 import dataclasses
 
 
+class UnknownMessageException(Exception):
+    pass
+
+
 @enum.unique
 class MessageType(enum.IntEnum):
     REQUEST_VOTE = 0
@@ -69,3 +73,21 @@ class AppendEntriesResponse(Message):
             'type': MessageType.APPEND_ENTRIES_RESPONSE,
             'payload': {}
         })
+
+
+deser_map = {
+    MessageType.REQUEST_VOTE: RequestVote.from_dict,
+    MessageType.REQUEST_VOTE_RESPONSE: ResponseVote.from_dict,
+    MessageType.APPEND_ENTRIES: AppendEntries.from_dict,
+    MessageType.APPEND_ENTRIES_RESPONSE: AppendEntries.from_dict
+}
+
+
+def deserialize(raw_message):
+    try:
+        msg_dict = json.loads(raw_message)
+        msg = deser_map[msg_dict['type']](msg_dict['payload'])
+    except (json.JSONDecodeError, KeyError) as e:
+        raise UnknownMessageException(e)
+    else:
+        return msg
