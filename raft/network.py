@@ -137,7 +137,7 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
         if self.loop.time() - self.last_heartbeat > self.election_timeout:
             self.log.info("Becoming candidate")
             self.machine.become_candidate()
-            self.machine.vote = self.node_id
+            self.machine.voted_for = self.node_id
             self.send_vote_request()
         else:
             self.loop.call_later(self.election_timeout, self.init_state)
