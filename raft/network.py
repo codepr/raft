@@ -66,6 +66,8 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
         else:
             self.log.info('Data received from %s: %s', addr, msg)
             if isinstance(msg, message.AppendEntries):
+                if self.machine.state == State.LEADER:
+                    return
                 self.last_heartbeat = self.loop.time()
                 if msg.command:
                     self.machine.append_entries(msg.index, msg.command)
@@ -83,22 +85,24 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
                     )
             elif isinstance(msg, message.AppendEntriesResponse):
                 # TODO
+                if self.machine.state != State.LEADER:
+                    return
                 if msg.success:
                     self.append_entries_resp.add(addr)
                     if len(self.append_entries_resp) > len(self.nodes) // 2:
                         self.machine.commit(msg.index)
                         self.append_entries_resp.clear()
-                        if self.machine.state == State.LEADER:
-                            self.answer_client()
+                        self.answer_client()
             elif isinstance(msg, message.RequestVote):
                 if not self.machine.state == State.LEADER:
-                    self.machine.term += 1
                     self.machine.vote = f'{addr[0]}:{addr[1]}'
                     msg = message.RequestVoteResponse()
                     self.transport.sendto(msg.to_json().encode(), addr)
                     self.log.info("Becoming follower")
                     self.machine.become_follower()
             elif isinstance(msg, message.RequestVoteResponse):
+                if self.machine.state != State.CANDIDATE:
+                    return
                 self.votes.add(addr)
                 if len(self.votes) > len(self.nodes) // 2:
                     self.log.info("Becoming leader")
