@@ -1,4 +1,8 @@
 import enum
+import collections
+
+
+LogEntry = collections.namedtuple('LogEntry', ('term', 'command'))
 
 
 @enum.unique
@@ -59,7 +63,7 @@ class RaftMachine:
 
     def append_entries(self, index, entries):
         # TODO
-        self._pending_entries[index] = entries
+        self._pending_entries[index] = LogEntry(self.term, entries)
 
     def commit(self, index):
         if index in self._pending_entries:
