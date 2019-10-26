@@ -16,7 +16,7 @@ nodes = tuple([to_addr(x) for x in sys.argv[2].split(',')])
 
 
 def run(listen_on, nodes):
-    asyncio.run(raft.run_server(listen_on, nodes))
+    asyncio.run(raft.run_server(asyncio.Queue(), listen_on, nodes))
 
 
 proc1 = mp.Process(target=run, args=(listen_on, nodes), daemon=True)

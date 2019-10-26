@@ -34,7 +34,9 @@ class Node:
 
 class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
 
-    def __init__(self, node_id, timeout, election_timeout, on_con_lost, nodes=()):
+    def __init__(self, event_queue, node_id, timeout,
+                 election_timeout, on_con_lost, nodes=()):
+        self.event_queue = event_queue
         self.nodes = nodes
         self.node_id = node_id
         self.timeout = timeout
@@ -47,6 +49,7 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
         self.set_formatter(f'[{self.node_id}] %(message)s')
         self.votes = set()
         self.append_entries_resp = set()
+        self.loop.create_task(self._poll_events())
 
     def connection_made(self, transport):
         peername = transport.get_extra_info('peername')
@@ -65,13 +68,14 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
             if isinstance(msg, message.AppendEntries):
                 self.last_heartbeat = self.loop.time()
                 if msg.command:
-                    self.machine.append_entries(msg.command)
+                    self.machine.append_entries(msg.index, msg.command)
             elif isinstance(msg, message.AppendEntriesResponse):
                 # TODO
                 self.append_entries_resp.add(addr)
                 if len(self.append_entries_resp) > len(self.nodes) // 2:
-                    self.machine.commit()
+                    self.machine.commit(msg.index)
                     self.append_entries_resp.clear()
+                    self.answer_client()
             elif isinstance(msg, message.RequestVote):
                 if not self.machine.state == State.LEADER:
                     self.machine.term += 1
@@ -113,17 +117,30 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
     def send_heartbeat(self):
         if self.machine.state != State.LEADER:
             return
+        self._send_append_entries(None)
+        self.loop.call_later(self.timeout, self.send_heartbeat)
+
+    def answer_client(self):
+        # TODO
+        self.log.debug("Answer to client")
+
+    def _send_append_entries(self, data):
         msg = message.AppendEntries(
             self.machine.term,
             self.machine.next_index,
-            None
+            data
         )
         for node_addr in self.nodes:
             self.transport.sendto(msg.to_json().encode(), node_addr)
-        self.loop.call_later(self.timeout, self.send_heartbeat)
+
+    async def _poll_events(self):
+        while True:
+            event = await self.event_queue.get()
+            self.loop.call_soon(self._send_append_entries(event))
 
 
-async def run_server(addr=('127.0.0.1', 20000), nodes_addrs=(), timeout=.1):
+async def run_server(event_queue, addr=('127.0.0.1', 20000),
+                     nodes_addrs=(), timeout=.1):
     # Get a reference to the event loop as we plan to use
     # low-level APIs.
     loop = asyncio.get_running_loop()
@@ -134,6 +151,7 @@ async def run_server(addr=('127.0.0.1', 20000), nodes_addrs=(), timeout=.1):
     on_con_lost = loop.create_future()
     transport, _ = await loop.create_datagram_endpoint(
         lambda: RaftServerProtocol(
+            event_queue,
             node.name,
             timeout,
             election_timeout,
