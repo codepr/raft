@@ -30,20 +30,34 @@ class Message:
 @dataclasses.dataclass
 class RequestVote(Message):
 
+    term: int
+    last_log_term: int
+    last_log_index: int
+    candidate_id: str
+
     def to_json(self):
         return json.dumps({
             'type': MessageType.REQUEST_VOTE,
-            'payload': {}
+            'payload': {
+                'term': self.term,
+                'last_log_term': self.last_log_term,
+                'last_log_index': self.last_log_index,
+                'candidate_id': self.candidate_id
+            }
         })
 
 
 @dataclasses.dataclass
 class RequestVoteResponse(Message):
 
+    vote_granted: bool = False
+
     def to_json(self):
         return json.dumps({
             'type': MessageType.REQUEST_VOTE_RESPONSE,
-            'payload': {}
+            'payload': {
+                'vote_granted': self.vote_granted
+            }
         })
 
 

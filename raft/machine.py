@@ -19,7 +19,7 @@ class RaftMachine:
         self._node_id = node_id
         self._term = 0
         self._log = []
-        self._vote = None
+        self._voted_for = None
         self._next_index = 0
         self._pending_entries = dict()
 
@@ -36,12 +36,12 @@ class RaftMachine:
         self._term = term
 
     @property
-    def vote(self):
-        return self._vote
+    def voted_for(self):
+        return self._voted_for
 
-    @vote.setter
-    def vote(self, node_name):
-        self._vote = node_name
+    @voted_for.setter
+    def voted_for(self, node_name):
+        self._voted_for = node_name
 
     @property
     def next_index(self):
@@ -69,3 +69,6 @@ class RaftMachine:
         if index in self._pending_entries:
             self._log.append(self._pending_entries.pop(index))
             self.next_index += 1
+
+    def last_log_term(self):
+        return self._log[-1].term if self._log else 0
