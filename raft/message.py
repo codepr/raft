@@ -38,7 +38,7 @@ class RequestVote(Message):
 
 
 @dataclasses.dataclass
-class ResponseVote(Message):
+class RequestVoteResponse(Message):
 
     def to_json(self):
         return json.dumps({
@@ -85,7 +85,7 @@ class AppendEntriesResponse(Message):
 
 deser_map = {
     MessageType.REQUEST_VOTE: RequestVote.from_dict,
-    MessageType.REQUEST_VOTE_RESPONSE: ResponseVote.from_dict,
+    MessageType.REQUEST_VOTE_RESPONSE: RequestVoteResponse.from_dict,
     MessageType.APPEND_ENTRIES: AppendEntries.from_dict,
     MessageType.APPEND_ENTRIES_RESPONSE: AppendEntriesResponse.from_dict
 }

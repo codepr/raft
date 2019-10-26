@@ -94,11 +94,11 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
                 if not self.machine.state == State.LEADER:
                     self.machine.term += 1
                     self.machine.vote = f'{addr[0]}:{addr[1]}'
-                    msg = message.ResponseVote()
+                    msg = message.RequestVoteResponse()
                     self.transport.sendto(msg.to_json().encode(), addr)
                     self.log.info("Becoming follower")
                     self.machine.become_follower()
-            elif isinstance(msg, message.ResponseVote):
+            elif isinstance(msg, message.RequestVoteResponse):
                 self.votes.add(addr)
                 if len(self.votes) > len(self.nodes) // 2:
                     self.log.info("Becoming leader")
