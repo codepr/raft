@@ -15,8 +15,20 @@ listen_on = to_addr(sys.argv[1])
 nodes = tuple([to_addr(x) for x in sys.argv[2].split(',')])
 
 
+async def start_server(listen_on, nodes):
+    loop = asyncio.get_running_loop()
+    event_queue = asyncio.Queue()
+    task = loop.create_task(raft.run_server(event_queue, listen_on, nodes))
+    try:
+        while True:
+            await asyncio.sleep(5)
+            await event_queue.put({'cmd': 'SET X 5'})
+    finally:
+        task.cancel()
+
+
 def run(listen_on, nodes):
-    asyncio.run(raft.run_server(asyncio.Queue(), listen_on, nodes))
+    asyncio.run(start_server(listen_on, nodes))
 
 
 proc1 = mp.Process(target=run, args=(listen_on, nodes), daemon=True)

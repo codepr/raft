@@ -63,5 +63,5 @@ class RaftMachine:
 
     def commit(self, index):
         if index in self._pending_entries:
-            self.log.append(self._pending_entries.pop(index))
+            self._log.append(self._pending_entries.pop(index))
             self.next_index += 1

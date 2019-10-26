@@ -20,7 +20,7 @@ class Message:
 
     @classmethod
     def from_json(cls, json_dict):
-        return cls(**json.loads(json_dict)['type'])
+        return cls(**json.loads(json_dict)['payload'])
 
     @classmethod
     def from_dict(cls, dic):
@@ -68,10 +68,18 @@ class AppendEntries(Message):
 @dataclasses.dataclass
 class AppendEntriesResponse(Message):
 
+    term: int
+    index: int
+    success: bool = False
+
     def to_json(self):
         return json.dumps({
             'type': MessageType.APPEND_ENTRIES_RESPONSE,
-            'payload': {}
+            'payload': {
+                'term': self.term,
+                'index': self.index,
+                'success': self.success
+            }
         })
 
 
@@ -79,7 +87,7 @@ deser_map = {
     MessageType.REQUEST_VOTE: RequestVote.from_dict,
     MessageType.REQUEST_VOTE_RESPONSE: ResponseVote.from_dict,
     MessageType.APPEND_ENTRIES: AppendEntries.from_dict,
-    MessageType.APPEND_ENTRIES_RESPONSE: AppendEntries.from_dict
+    MessageType.APPEND_ENTRIES_RESPONSE: AppendEntriesResponse.from_dict
 }
 
 

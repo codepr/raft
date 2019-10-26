@@ -69,13 +69,27 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
                 self.last_heartbeat = self.loop.time()
                 if msg.command:
                     self.machine.append_entries(msg.index, msg.command)
+                    self.loop.call_soon(
+                        self._send_append_entries_response,
+                        addr,
+                        True
+                    )
+                else:
+                    self.machine.commit(msg.index)
+                    self.loop.call_soon(
+                        self._send_append_entries_response,
+                        addr,
+                        False
+                    )
             elif isinstance(msg, message.AppendEntriesResponse):
                 # TODO
-                self.append_entries_resp.add(addr)
-                if len(self.append_entries_resp) > len(self.nodes) // 2:
-                    self.machine.commit(msg.index)
-                    self.append_entries_resp.clear()
-                    self.answer_client()
+                if msg.success:
+                    self.append_entries_resp.add(addr)
+                    if len(self.append_entries_resp) > len(self.nodes) // 2:
+                        self.machine.commit(msg.index)
+                        self.append_entries_resp.clear()
+                        if self.machine.state == State.LEADER:
+                            self.answer_client()
             elif isinstance(msg, message.RequestVote):
                 if not self.machine.state == State.LEADER:
                     self.machine.term += 1
@@ -133,10 +147,20 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
         for node_addr in self.nodes:
             self.transport.sendto(msg.to_json().encode(), node_addr)
 
+    def _send_append_entries_response(self, addr, success):
+        msg = message.AppendEntriesResponse(
+            self.machine.term,
+            self.machine.next_index,
+            success
+        )
+        self.transport.sendto(msg.to_json().encode(), addr)
+
     async def _poll_events(self):
         while True:
             event = await self.event_queue.get()
-            self.loop.call_soon(self._send_append_entries(event))
+            if self.machine.state != State.LEADER:
+                continue
+            self.loop.call_soon(self._send_append_entries, event)
 
 
 async def run_server(event_queue, addr=('127.0.0.1', 20000),
