@@ -102,6 +102,11 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
             elif isinstance(msg, message.RequestVote):
                 if self.machine.state != State.CANDIDATE:
                     return
+                # Two conditions to success reply:
+                # 1. false if {message term} < {current node term}
+                # 2. true If {current node voted_for} is None or
+                # {message candidate_id}, and candidate’s log is at least as
+                # up-to-date as current node’s log (last_log_index >= index)
                 voted_for = (
                     (msg.term >= self.machine.term) and
                     (self.machine.voted_for is None or
@@ -111,7 +116,7 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
                 if voted_for:
                     self.machine.voted_for = f'{addr[0]}:{addr[1]}'
                 msg = message.RequestVoteResponse(voted_for)
-                self.transport.sendto(msg.to_json().encode(), addr)
+                self.send_message(msg.to_json(), addr)
                 self.log.info("Becoming follower")
                 self.machine.become_follower()
             elif isinstance(msg, message.RequestVoteResponse):
@@ -142,6 +147,9 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
         else:
             self.loop.call_later(self.election_timeout, self.init_state)
 
+    def send_message(self, msg, addr):
+        self.transport.sendto(msg.encode('utf-8'), addr)
+
     def send_vote_request(self):
         self.log.debug("Sending vote request")
         msg = message.RequestVote(
@@ -151,7 +159,7 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
             self.node_id
         )
         for node_addr in self.nodes:
-            self.transport.sendto(msg.to_json().encode(), node_addr)
+            self.send_message(msg.to_json(), node_addr)
 
     def send_heartbeat(self):
         if self.machine.state != State.LEADER:
@@ -170,7 +178,7 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
             data
         )
         for node_addr in self.nodes:
-            self.transport.sendto(msg.to_json().encode(), node_addr)
+            self.send_message(msg.to_json(), node_addr)
 
     def _send_append_entries_response(self, addr, success):
         msg = message.AppendEntriesResponse(
@@ -178,7 +186,7 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
             self.machine.next_index,
             success
         )
-        self.transport.sendto(msg.to_json().encode(), addr)
+        self.send_message(msg.to_json(), addr)
 
     async def _poll_events(self):
         while True:

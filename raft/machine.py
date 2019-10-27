@@ -17,9 +17,13 @@ class RaftMachine:
     def __init__(self, node_id):
         self._state = State.FOLLOWER  # starting state is always FOLLOWER
         self._node_id = node_id
+        # Persistent state for all nodes
         self._term = 0
         self._log = []
         self._voted_for = None
+        # Volatile state
+        self._commit_index = 0
+        # Volatile state for leader
         self._next_index = 0
         self._pending_entries = dict()
 
@@ -30,10 +34,6 @@ class RaftMachine:
     @property
     def term(self):
         return self._term
-
-    @term.setter
-    def term(self, term):
-        self._term = term
 
     @property
     def voted_for(self):
@@ -47,9 +47,9 @@ class RaftMachine:
     def next_index(self):
         return self._next_index
 
-    @next_index.setter
-    def next_index(self, index):
-        self._next_index = index
+    @property
+    def commit_index(self):
+        return self._commit_index
 
     def become_leader(self):
         self._state = State.LEADER
@@ -59,7 +59,7 @@ class RaftMachine:
 
     def become_candidate(self):
         self._state = State.CANDIDATE
-        self.term += 1
+        self._term += 1
 
     def append_entries(self, index, entries):
         # TODO
@@ -68,7 +68,8 @@ class RaftMachine:
     def commit(self, index):
         if index in self._pending_entries:
             self._log.append(self._pending_entries.pop(index))
-            self.next_index += 1
+            self._next_index += 1
+            self._commit_index = index
 
     def last_log_term(self):
         return self._log[-1].term if self._log else 0
