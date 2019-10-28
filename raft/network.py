@@ -107,15 +107,15 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
                 # 2. true If {current node voted_for} is None or
                 # {message candidate_id}, and candidate’s log is at least as
                 # up-to-date as current node’s log (last_log_index >= index)
-                voted_for = (
+                success = (
                     (msg.term >= self.machine.term) and
                     (self.machine.voted_for is None or
                      msg.candidate_id == self.machine.voted_for) and
                     (msg.last_log_index >= self.machine.next_index)
                 )
-                if voted_for:
+                if success:
                     self.machine.voted_for = f'{addr[0]}:{addr[1]}'
-                msg = message.RequestVoteResponse(voted_for)
+                msg = message.RequestVoteResponse(success)
                 self.send_message(msg.to_json(), addr)
                 self.log.info("Becoming follower")
                 self.machine.become_follower()
