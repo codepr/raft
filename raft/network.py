@@ -43,10 +43,11 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
         self.on_con_lost = on_con_lost
         self.election_timeout = election_timeout
         self.loop = asyncio.get_running_loop()
-        self.machine = machine.RaftMachine(node_id)
+        self.machine = machine.RaftMachine(node_id, nodes)
         self.last_heartbeat = 0
         super().__init__(level=logging.DEBUG)
         self.set_formatter(f'[{self.node_id}] %(message)s')
+        self.set_level(logging.DEBUG)
         self.votes = set()
         self.append_entries_resp = set()
         self.loop.create_task(self._poll_events())
@@ -69,26 +70,19 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
                 if self.machine.state == State.LEADER:
                     return
                 self.last_heartbeat = self.loop.time()
+                success = True
                 if msg.term < self.machine.term:
-                    self.loop.call_soon(
-                        self._send_append_entries_response,
-                        addr,
-                        False
-                    )
+                    success = False
                 elif msg.command:
                     self.machine.append_entries(msg.index, msg.command)
-                    self.loop.call_soon(
-                        self._send_append_entries_response,
-                        addr,
-                        True
-                    )
                 else:
-                    self.machine.commit(msg.index)
-                    self.loop.call_soon(
-                        self._send_append_entries_response,
-                        addr,
-                        False
-                    )
+                    self.machine.commit(addr, msg.index)
+                    success = False
+                self.loop.call_soon(
+                    self._send_append_entries_response,
+                    addr,
+                    success
+                )
             elif isinstance(msg, message.AppendEntriesResponse):
                 # TODO
                 if self.machine.state != State.LEADER:
@@ -96,7 +90,7 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
                 if msg.success:
                     self.append_entries_resp.add(addr)
                     if len(self.append_entries_resp) > len(self.nodes) // 2:
-                        self.machine.commit(msg.index)
+                        self.machine.commit(addr, msg.index)
                         self.append_entries_resp.clear()
                         self.answer_client()
             elif isinstance(msg, message.RequestVote):
@@ -111,7 +105,7 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
                     (msg.term >= self.machine.term) and
                     (self.machine.voted_for is None or
                      msg.candidate_id == self.machine.voted_for) and
-                    (msg.last_log_index >= self.machine.next_index)
+                    (msg.last_log_index >= self.machine.next_index[addr])
                 )
                 if success:
                     self.machine.voted_for = f'{addr[0]}:{addr[1]}'
@@ -154,17 +148,18 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
         self.log.debug("Sending vote request")
         msg = message.RequestVote(
             self.machine.term,
-            self.machine.next_index,
+            self.machine.last_log_index(),
             self.machine.last_log_term(),
             self.node_id
         )
-        for node_addr in self.nodes:
-            self.send_message(msg.to_json(), node_addr)
+        for node in self.nodes:
+            self.send_message(msg.to_json(), node.addr)
 
     def send_heartbeat(self):
         if self.machine.state != State.LEADER:
             return
         self._send_append_entries(None)
+        # Re-schedule recursively after timeout
         self.loop.call_later(self.timeout, self.send_heartbeat)
 
     def answer_client(self):
@@ -174,16 +169,16 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
     def _send_append_entries(self, data):
         msg = message.AppendEntries(
             self.machine.term,
-            self.machine.next_index,
+            self.machine.last_log_index(),
             data
         )
-        for node_addr in self.nodes:
-            self.send_message(msg.to_json(), node_addr)
+        for node in self.nodes:
+            self.send_message(msg.to_json(), node.addr)
 
     def _send_append_entries_response(self, addr, success):
         msg = message.AppendEntriesResponse(
             self.machine.term,
-            self.machine.next_index,
+            self.machine.last_log_index(),
             success
         )
         self.send_message(msg.to_json(), addr)
@@ -204,6 +199,7 @@ async def run_server(event_queue, addr=('127.0.0.1', 20000),
     election_timeout = round(random.uniform(.150, .300), 3)
 
     node = Node(addr)
+    nodes = [Node(node_addr) for node_addr in nodes_addrs]
 
     on_con_lost = loop.create_future()
     transport, _ = await loop.create_datagram_endpoint(
@@ -213,7 +209,7 @@ async def run_server(event_queue, addr=('127.0.0.1', 20000),
             timeout,
             election_timeout,
             on_con_lost,
-            nodes_addrs
+            nodes
         ),
         local_addr=addr
     )
