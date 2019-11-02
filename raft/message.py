@@ -3,6 +3,7 @@ import json
 import dataclasses
 
 
+
 class UnknownMessageException(Exception):
     pass
 

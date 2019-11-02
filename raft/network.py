@@ -70,14 +70,11 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
                 if self.machine.state == State.LEADER:
                     return
                 self.last_heartbeat = self.loop.time()
-                success = True
-                if msg.term < self.machine.term:
-                    success = False
-                elif msg.command:
+                success = msg.term == self.machine.term and msg.command
+                if msg.command:
                     self.machine.append_entries(msg.index, msg.command)
                 else:
                     self.machine.commit(addr, msg.index)
-                    success = False
                 self.loop.call_soon(
                     self._send_append_entries_response,
                     addr,
