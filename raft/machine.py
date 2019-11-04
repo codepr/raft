@@ -67,16 +67,21 @@ class RaftMachine:
 
     def append_entries(self, index, entries):
         # TODO
+        if self.state == State.FOLLOWER:
+            index += 1
         self._pending_entries[index] = LogEntry(self.term, entries)
 
     def commit(self, addr, index):
+        if self.state == State.LEADER:
+            self._next_index[addr] = index + 1
         if index in self._pending_entries:
             self._log.append(self._pending_entries.pop(index))
-            self._next_index[addr] = index + 1
             self._commit_index = index
 
-    def last_log_index(self):
-        return len(self._log)
+    def last_log_index(self, addr=None):
+        return len(self._log) \
+            if (not addr or addr not in self._next_index) \
+            else self._next_index[addr]
 
     def last_log_term(self):
         return self._log[-1].term if self._log else 0

@@ -170,6 +170,7 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
             data
         )
         for node in self.nodes:
+            msg.index = self.machine.last_log_index(node.addr)
             self.send_message(msg.to_json(), node.addr)
 
     def _send_append_entries_response(self, addr, success):
@@ -185,6 +186,7 @@ class RaftServerProtocol(LoggerMixin, asyncio.DatagramProtocol):
             event = await self.event_queue.get()
             if self.machine.state != State.LEADER:
                 continue
+            self.machine.append_entries(self.machine.commit_index, event)
             self.loop.call_soon(self._send_append_entries, event)
 
 
